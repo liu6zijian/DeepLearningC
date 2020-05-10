@@ -14,62 +14,62 @@
 #define MaxPool 1
 #define MinPool 2
 
-// 卷积层
+// 卷积�?
 typedef struct convolutional_layer{
 	int inputWidth;   //输入图像的宽
 	int inputHeight;  //输入图像的长
 	int mapSize;      //特征模板的大小，模板一般都是正方形
 
-	int inChannels;   //输入图像的数目
-	int outChannels;  //输出图像的数目
+	int inChannels;   //输入图像的数�?
+	int outChannels;  //输出图像的数�?
 
-	// 关于特征模板的权重分布，这里是一个四维数组
+	// 关于特征模板的权重分布，这里是一个四维数�?
 	// 其大小为inChannels*outChannels*mapSize*mapSize大小
-	// 这里用四维数组，主要是为了表现全连接的形式，实际上卷积层并没有用到全连接的形式
-	// 这里的例子是DeapLearningToolboox里的CNN例子，其用到就是全连接
-	float**** mapData;     //存放特征模块的数据
-	float**** dmapData;    //存放特征模块的数据的局部梯度
+	// 这里用四维数组，主要是为了表现全连接的形式，实际上卷积层并没有用到全连接的形�?
+	// 这里的例子是DeapLearningToolboox里的CNN例子，其用到就是全连�?
+	float**** mapData;     //存放特征模块的数�?
+	float**** dmapData;    //存放特征模块的数据的局部梯�?
 
 	float* basicData;   //偏置，偏置的大小，为outChannels
 	bool isFullConnect; //是否为全连接
 	bool* connectModel; //连接模式（默认为全连接）
 
 	// 下面三者的大小同输出的维度相同
-	float*** v; // 进入激活函数的输入值
+	float*** v; // 进入激活函数的输入�?
 	float*** y; // 激活函数后神经元的输出
 
-	// 输出像素的局部梯度
-	float*** d; // 网络的局部梯度,δ值  
+	// 输出像素的局部梯�?
+	float*** d; // 网络的局部梯�?δ�? 
 }CovLayer;
 
-// 采样层 pooling
+// 采样�?pooling
 typedef struct pooling_layer{
 	int inputWidth;   //输入图像的宽
 	int inputHeight;  //输入图像的长
-	int mapSize;      //特征模板的大小
+	int mapSize;      //特征模板的大�?
 
-	int inChannels;   //输入图像的数目
-	int outChannels;  //输出图像的数目
+	int inChannels;   //输入图像的数�?
+	int outChannels;  //输出图像的数�?
 
-	int poolType;     //Pooling的方法
+	int poolType;     //Pooling的方�?
 	float* basicData;   //偏置
 
-	float*** y; // 采样函数后神经元的输出,无激活函数
-	float*** d; // 网络的局部梯度,δ值
+	float*** y; // 采样函数后神经元的输�?无激活函�?
+	float*** d; // 网络的局部梯�?δ�?
 }PoolLayer;
 
-// 输出层 全连接的神经网络
+// 输出�?全连接的神经网络
 typedef struct nn_layer{
-	int inputNum;   //输入数据的数目
-	int outputNum;  //输出数据的数目
+	int inputNum;   //输入数据的数�?
+	int outputNum;  //输出数据的数�?
 
 	float** wData; // 权重数据，为一个inputNum*outputNum大小
 	float* basicData;   //偏置，大小为outputNum大小
 
 	// 下面三者的大小同输出的维度相同
-	float* v; // 进入激活函数的输入值
+	float* v; // 进入激活函数的输入�?
 	float* y; // 激活函数后神经元的输出
-	float* d; // 网络的局部梯度,δ值
+	float* d; // 网络的局部梯�?δ�?
 
 	bool isFullConnect; //是否为全连接
 }OutLayer;
@@ -87,22 +87,22 @@ typedef struct cnn_network{// two conv + linear
 }CNN;
 
 typedef struct train_opts{
-	int numepochs; // 训练的迭代次数
+	int numepochs; // 训练的迭代次�?
 	float alpha; // 学习速率
 }CNNOpts;
 
 void cnnsetup(CNN* cnn,nSize inputSize,int outputSize);
 /*	
-	CNN网络的训练函数
+	CNN网络的训练函�?
 	inputData，outputData分别存入训练数据
 	dataNum表明数据数目
 */
-void cnntrain(CNN* cnn,	ImgArr inputData,LabelArr outputData,CNNOpts opts,int trainNum);
+void cnntrain(CNN* cnn,	ImgArr inputData,LabelArr outputData,CNNOpts opts,int trainNum, int myid, int numprocs);
 // 测试cnn函数
-float cnntest(CNN* cnn, ImgArr inputData,LabelArr outputData,int testNum);
+float cnntest(CNN* cnn, ImgArr inputData,LabelArr outputData,int testNum, int myid, int numprocs);
 // 保存cnn
 void savecnn(CNN* cnn, const char* filename);
-// 导入cnn的数据
+// 导入cnn的数�?
 void importcnn(CNN* cnn, const char* filename);
 
 // 初始化卷积层
@@ -114,11 +114,11 @@ void PoolLayerConnect(PoolLayer* poolL,bool* connectModel);
 // 初始化输出层
 OutLayer* initOutLayer(int inputNum,int outputNum);
 
-// 激活函数 input是数据，inputNum说明数据数目，bas表明偏置
-float activation_Sigma(float input,float bas); // sigma激活函数
+// 激活函�?input是数据，inputNum说明数据数目，bas表明偏置
+float activation_Sigma(float input,float bas); // sigma激活函�?
 
-void cnnff(CNN* cnn,float** inputData); // 网络的前向传播
-void cnnbp(CNN* cnn,float* outputData); // 网络的后向传播
+void cnnff(CNN* cnn,float** inputData); // 网络的前向传�?
+void cnnbp(CNN* cnn,float* outputData); // 网络的后向传�?
 void cnnapplygrads(CNN* cnn,CNNOpts opts,float** inputData);
 void cnnclear(CNN* cnn); // 将数据vyd清零
 
@@ -128,7 +128,7 @@ void cnnclear(CNN* cnn); // 将数据vyd清零
 	inputNum 输入数据数目
 	mapSize 求平均的模块区域
 */
-void avgPooling(float** output,nSize outputSize,float** input,nSize inputSize,int mapSize); // 求平均值
+void avgPooling(float** output,nSize outputSize,float** input,nSize inputSize,int mapSize); // 求平均�?
 
 /* 
 	单层全连接神经网络的处理

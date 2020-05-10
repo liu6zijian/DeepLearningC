@@ -4,10 +4,14 @@
 #include <math.h>
 #include <random>
 #include <time.h>
+#include <mpi.h>
 #include "cnn.h"
 #include "minst.h"
+#include <ctime>
 #include <iostream>
+#include <cstdlib>
 using namespace std;
+clock_t t1,t2;
 // ���¶��ǲ��Ժ��������Բ��ù�
 // ����Minstģ���Ƿ�������
 // void test_minst(){
@@ -105,6 +109,7 @@ void test_mat1()
 
 }
 // ����cnnģ���Ƿ�������
+/*
 void test_cnn()
 {
 
@@ -129,11 +134,11 @@ void test_cnn()
 		printf("write file failed\n");
 	fwrite(cnn->L,sizeof(float),trainNum,fp);
 	fclose(fp);
-}
+}*/
 
 
 /*������*/
-int main()
+int main(int argc, char *argv[])
 {
 	LabelArr trainLabel=read_Lable("../Minst/train-labels.idx1-ubyte");
 	ImgArr trainImg=read_Img("../Minst/train-images.idx3-ubyte");
@@ -144,7 +149,7 @@ int main()
 	nSize inputSize={testImg->ImgPtr[0].c,testImg->ImgPtr[0].r};
 	int outSize=testLabel->LabelPtr[0].l;
 	cout << "Data has been loaded..." << endl;
-
+	t1 = clock();
 	// CNN�ṹ�ĳ�ʼ��
 	CNN* cnn=(CNN*)malloc(sizeof(CNN));
 	cnnsetup(cnn,inputSize,outSize);
@@ -152,30 +157,42 @@ int main()
 	cout << "image size: (" << testImg->ImgPtr[0].c << ","<< testImg->ImgPtr[0].r << ")"<<endl;
 	cout << outSize <<" classification issue" << endl;
 	// CNNѵ��
+	int myid, numprocs;
+	MPI_Init(&argc, &argv);
+	MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
+	MPI_Comm_rank(MPI_COMM_WORLD, &myid);
 	
 	CNNOpts opts;
 	opts.numepochs=10;
 	opts.alpha=1.0;
-	int trainNum=50000;
-	cout << "Model training"<< endl;
-	cnntrain(cnn,trainImg,trainLabel,opts,trainNum);
-	printf("train finished!!\n");
-	savecnn(cnn,"minst.cnn");
-	// ����ѵ�����
-	FILE  *fp=NULL;
-	fp=fopen("../CNNData/cnnL.ma","wb");
-	if(fp==NULL)
-		printf("write file failed\n");
-	fwrite(cnn->L,sizeof(float),trainNum,fp);
-	fclose(fp);
-	cout << "hello" << endl;
-
+	// int trainNum=10000;
+	// cout << "Model training"<< endl;
+	// cnntrain(cnn,trainImg,trainLabel,opts,trainNum, myid, numprocs);
+	// printf("train finished!!\n");
+	// savecnn(cnn,"minst.cnn");
+	// // ����ѵ�����?
+	// FILE  *fp=NULL;
+	// fp=fopen("../CNNData/cnnL.ma","wb");
+	// if(fp==NULL)
+	// 	printf("write file failed\n");
+	// fwrite(cnn->L,sizeof(float),trainNum,fp);
+	// fclose(fp);
+	// //cout << "hello" << endl;
+    //     t2 = clock();
+    //     double endtime = (double)(t2-t1)/CLOCKS_PER_SEC;
+    //     cout <<"train time: " <<endtime<<endl;
 	// // CNN����
 	importcnn(cnn,"minst.cnn");
-	int testNum=10000;
+	int testNum=5000;
 	float incorrectRatio=0.0;
-	incorrectRatio=cnntest(cnn,testImg,testLabel,testNum);
+	t1 = clock();
+	incorrectRatio=cnntest(cnn,testImg,testLabel,testNum, myid, numprocs);
 	printf("test finished!! Error is %.4f\n",incorrectRatio);
-
+	
+	t2 = clock();
+	double endtime = (double)(t2-t1)/CLOCKS_PER_SEC;
+	if(myid==0)
+		cout <<"train time: " <<endtime<<endl;
+	MPI_Finalize();
 	return 0;
 }

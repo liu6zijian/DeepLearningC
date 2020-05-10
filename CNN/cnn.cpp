@@ -5,7 +5,9 @@
 #include <random>
 #include <time.h>
 #include "cnn.h"
-
+#include <iostream>
+#include <mpi.h>
+using namespace std;
 void cnnsetup(CNN* cnn,nSize inputSize,int outputSize)
 {
 	cnn->layerNum=5;
@@ -142,13 +144,13 @@ OutLayer* initOutLayer(int inputNum,int outputNum)
 	outL->y=(float*)calloc(outputNum,sizeof(float));
 
 	// 权重的初始化
-	outL->wData=(float**)malloc(outputNum*sizeof(float*)); // 输入行，输出列
+	outL->wData=(float**)malloc(outputNum*sizeof(float*)); // 输入行，输出�?
 	int i,j;
 	srand((unsigned)time(NULL));
 	for(i=0;i<outputNum;i++){
 		outL->wData[i]=(float*)malloc(inputNum*sizeof(float));
 		for(j=0;j<inputNum;j++){
-			float randnum=(((float)rand()/(float)RAND_MAX)-0.5)*2; // 产生一个-1到1的随机数
+			float randnum=(((float)rand()/(float)RAND_MAX)-0.5)*2; // 产生一�?1�?的随机数
 			outL->wData[i][j]=randnum*sqrt((float)6.0/(float)(inputNum+outputNum));
 		}
 	}
@@ -158,7 +160,7 @@ OutLayer* initOutLayer(int inputNum,int outputNum)
 	return outL;
 }
 
-int vecmaxIndex(float* vec, int veclength)// 返回向量最大数的序号
+int vecmaxIndex(float* vec, int veclength)// 返回向量最大数的序�?
 {
 	int i;
 	float maxnum=-1.0;
@@ -173,17 +175,20 @@ int vecmaxIndex(float* vec, int veclength)// 返回向量最大数的序号
 }
 
 // 测试cnn函数
-float cnntest(CNN* cnn, ImgArr inputData,LabelArr outputData,int testNum)
+float cnntest(CNN* cnn, ImgArr inputData,LabelArr outputData,int testNum, int myid, int numprocs)
 {
-	int n=0;
-	int incorrectnum=0;  //错误预测的数目
-	for(n=0;n<testNum;n++){
+	int incorrectnum=0, total_incor=0;  //错误预测的数�?
+	for(int n=myid;n<testNum;n+=numprocs){
 		cnnff(cnn,inputData->ImgPtr[n].ImgData);
 		if(vecmaxIndex(cnn->O5->y,cnn->O5->outputNum)!=vecmaxIndex(outputData->LabelPtr[n].LabelData,cnn->O5->outputNum))
 			incorrectnum++;
 		cnnclear(cnn);
 	}
-	return (float)incorrectnum/(float)testNum;
+	MPI_Reduce(&incorrectnum, &total_incor, 1, MPI_INT, MPI_SUM, 0,MPI_COMM_WORLD);
+	if(myid==0)
+		return (float)total_incor/(float)testNum;
+	else
+		return (float)0;		
 }
 
 // 保存cnn
@@ -195,7 +200,7 @@ void savecnn(CNN* cnn, const char* filename)
 		printf("write file failed\n");
 
 	int i,j,r;
-	// C1的数据
+	// C1的数�?
 	for(i=0;i<cnn->C1->inChannels;i++)
 		for(j=0;j<cnn->C1->outChannels;j++)
 			for(r=0;r<cnn->C1->mapSize;r++)
@@ -211,14 +216,14 @@ void savecnn(CNN* cnn, const char* filename)
 
 	fwrite(cnn->C3->basicData,sizeof(float),cnn->C3->outChannels,fp);
 
-	// O5输出层
+	// O5输出�?
 	for(i=0;i<cnn->O5->outputNum;i++)
 		fwrite(cnn->O5->wData[i],sizeof(float),cnn->O5->inputNum,fp);
 	fwrite(cnn->O5->basicData,sizeof(float),cnn->O5->outputNum,fp);
 
 	fclose(fp);
 }
-// 导入cnn的数据
+// 导入cnn的数�?
 void importcnn(CNN* cnn, const char* filename)
 {
 	FILE  *fp=NULL;
@@ -227,7 +232,7 @@ void importcnn(CNN* cnn, const char* filename)
 		printf("write file failed\n");
 
 	int i,j,c,r;
-	// C1的数据
+	// C1的数�?
 	for(i=0;i<cnn->C1->inChannels;i++)
 		for(j=0;j<cnn->C1->outChannels;j++)
 			for(r=0;r<cnn->C1->mapSize;r++)
@@ -250,7 +255,7 @@ void importcnn(CNN* cnn, const char* filename)
 	for(i=0;i<cnn->C3->outChannels;i++)
 		fread(&cnn->C3->basicData[i],sizeof(float),1,fp);
 
-	// O5输出层
+	// O5输出�?
 	for(i=0;i<cnn->O5->outputNum;i++)
 		for(j=0;j<cnn->O5->inputNum;j++)
 			fread(&cnn->O5->wData[i][j],sizeof(float),1,fp);
@@ -261,36 +266,116 @@ void importcnn(CNN* cnn, const char* filename)
 	fclose(fp);
 }
 
-void cnntrain(CNN* cnn,	ImgArr inputData,LabelArr outputData,CNNOpts opts,int trainNum)
+void cnntrain(CNN* cnn,	ImgArr inputData,LabelArr outputData,CNNOpts opts,int trainNum, int myid, int numprocs)
 {
 	// 学习训练误差曲线
 	cnn->L=(float*)malloc(trainNum*sizeof(float));
-	int e;
-	for(e=0;e<opts.numepochs;e++){
+	// int myid, numprocs;
+	
+	printf("[%d/%d]\n",myid,numprocs);
+
+	for(int e=0;e<opts.numepochs;e++){
+		cout << "Epoch: " << e  << endl;
 		int n=0;
-		for(n=0;n<trainNum;n++){
-			//printf("%d\n",n);
+		for(n=myid;n<trainNum;n+=numprocs){
+			// printf("%d\n",n);
 			cnnff(cnn,inputData->ImgPtr[n].ImgData);  // 前向传播，这里主要计算各
-			cnnbp(cnn,outputData->LabelPtr[n].LabelData); // 后向传播，这里主要计算各神经元的误差梯度
+			cnnbp(cnn,outputData->LabelPtr[n].LabelData); // 后向传播，这�?主要计算各神经元的误差梯�?
+                        
+			float temp_y, temp_d, temp_v;
+			for(int i=0;i<cnn->C1->outChannels;i++){
+				for(int r=0;r<cnn->S2->inputWidth;r++){
+					for(int c=0;c<cnn->S2->inputHeight;c++){
+						MPI_Reduce(&cnn->C1->y[i][r][c],&temp_y,1,MPI_FLOAT,MPI_SUM, 0,MPI_COMM_WORLD);
+						MPI_Reduce(&cnn->C1->d[i][r][c],&temp_d,1,MPI_FLOAT,MPI_SUM, 0,MPI_COMM_WORLD);
+						MPI_Reduce(&cnn->C1->v[i][r][c],&temp_v,1,MPI_FLOAT,MPI_SUM, 0,MPI_COMM_WORLD);
+						if (myid==0){
+							cnn->C1->y[i][r][c]= temp_y / numprocs;
+							cnn->C1->d[i][r][c]= temp_d / numprocs;
+							cnn->C1->v[i][r][c]= temp_v / numprocs;
+						}
+					}
+				}
+			}
 
+			for(int i=0;i<cnn->C3->outChannels;i++){
+				for(int r=0;r<cnn->S4->inputWidth;r++){
+					for(int c=0;c<cnn->S4->inputHeight;c++){
+						MPI_Reduce(&cnn->C3->y[i][r][c],&temp_y,1,MPI_FLOAT,MPI_SUM, 0,MPI_COMM_WORLD);
+						MPI_Reduce(&cnn->C3->d[i][r][c],&temp_d,1,MPI_FLOAT,MPI_SUM, 0,MPI_COMM_WORLD);
+						MPI_Reduce(&cnn->C3->v[i][r][c],&temp_v,1,MPI_FLOAT,MPI_SUM, 0,MPI_COMM_WORLD);
+						if (myid==0){
+							cnn->C3->y[i][r][c]= temp_y / numprocs;
+							cnn->C3->d[i][r][c]= temp_d / numprocs;
+							cnn->C3->v[i][r][c]= temp_v / numprocs;
+						}
+				
+					}
+				}	
+			}
 
-			char* filedir="../CNNData/";
-			const char* filename=combine_strings(filedir,combine_strings(intTochar(n),".cnn"));
-			savecnndata(cnn,filename,inputData->ImgPtr[n].ImgData);
-			cnnapplygrads(cnn,opts,inputData->ImgPtr[n].ImgData); // 更新权重
+			for(int i=0;i<cnn->O5->outputNum;i++){	
+				MPI_Reduce(&cnn->O5->y[i],&temp_y,1,MPI_FLOAT,MPI_SUM, 0,MPI_COMM_WORLD);
+				MPI_Reduce(&cnn->O5->d[i],&temp_d,1,MPI_FLOAT,MPI_SUM, 0,MPI_COMM_WORLD);
+				MPI_Reduce(&cnn->O5->v[i],&temp_v,1,MPI_FLOAT,MPI_SUM, 0,MPI_COMM_WORLD);
+				if (myid==0){
+					for(int i=0;i<cnn->O5->outputNum;i++){	
+						cnn->O5->y[i]= temp_y / numprocs;
+						cnn->O5->d[i]= temp_d / numprocs;
+						cnn->O5->v[i]= temp_v / numprocs;
+					}
+				}
+			}
 
+			for(int i=0;i<cnn->S2->outChannels;i++){
+				for(int r=0;r<(cnn->S2->inputWidth/cnn->S2->mapSize);r++){
+					for(int c=0;c<(cnn->S2->inputHeight/cnn->S2->mapSize);c++){
+						MPI_Reduce(&cnn->S2->y[i][r][c],&temp_y,1,MPI_FLOAT,MPI_SUM, 0,MPI_COMM_WORLD);
+						MPI_Reduce(&cnn->S2->d[i][r][c],&temp_d,1,MPI_FLOAT,MPI_SUM, 0,MPI_COMM_WORLD);
+						if (myid==0){
+							cnn->S2->y[i][r][c]= temp_y / numprocs;
+							cnn->S2->d[i][r][c]= temp_d / numprocs;
+						}						        
+					}
+				}	
+			}
+        
+		    for(int i=0;i<cnn->S4->outChannels;i++){
+				for(int r=0;r<(cnn->S4->inputWidth/cnn->S4->mapSize);r++){
+					for(int c=0;c<(cnn->S4->inputHeight/cnn->S4->mapSize);c++){
+						MPI_Reduce(&cnn->S4->y[i][r][c],&temp_y,1,MPI_FLOAT,MPI_SUM, 0,MPI_COMM_WORLD);
+						MPI_Reduce(&cnn->S4->d[i][r][c],&temp_d,1,MPI_FLOAT,MPI_SUM, 0,MPI_COMM_WORLD);
+		        		if (myid==0){
+								cnn->S4->y[i][r][c]= temp_y / numprocs;
+						        cnn->S4->d[i][r][c]= temp_d / numprocs;
+                        }						        
+					}
+
+				}
+			}	
+              
+			if (myid==0){
+			        char* filedir="../CNNData/";
+			        const char* filename=combine_strings(filedir,combine_strings(intTochar(n),".cnn"));
+			        savecnndata(cnn,filename,inputData->ImgPtr[n].ImgData);
+			        cnnapplygrads(cnn,opts,inputData->ImgPtr[n].ImgData); // 更新权重
+		        }
 			cnnclear(cnn);
-			// 计算并保存误差能量
+
+			// 计算并保存误差能�?
 			float l=0.0;
 			int i;
 			for(i=0;i<cnn->O5->outputNum;i++)
 				l=l+cnn->e[i]*cnn->e[i];
-			if(n==0)
-				cnn->L[n]=l/(float)2.0;
+			if(n<numprocs)
+				cnn->L[n]=l/(float)trainNum * (float)numprocs;
 			else
-				cnn->L[n]=cnn->L[n-1]*0.99+0.01*l/(float)2.0;
+				cnn->L[n]=cnn->L[n-numprocs] + l/(float)trainNum * (float)numprocs;
 		}
+		cout << "Loss [" << n-1 <<"]: "<< cnn->L[n-1] << endl;
+
 	}
+
 }
 
 // 这里InputData是图像数据，inputData[r][c],r行c列，这里根各权重模板是一致的
@@ -300,7 +385,7 @@ void cnnff(CNN* cnn,float** inputData)
 	int outSizeH=cnn->S2->inputHeight;
 	// 第一层的传播
 	int i,j,r,c;
-	// 第一层输出数据
+	// 第一层输出数�?
 	nSize mapSize={cnn->C1->mapSize,cnn->C1->mapSize};
 	nSize inSize={cnn->C1->inputWidth,cnn->C1->inputHeight};
 	nSize outSize={cnn->S2->inputWidth,cnn->S2->inputHeight};
@@ -327,7 +412,7 @@ void cnnff(CNN* cnn,float** inputData)
 			avgPooling(cnn->S2->y[i],outSize,cnn->C1->y[i],inSize,cnn->S2->mapSize);
 	}
 
-	// 第三层输出传播,这里是全连接
+	// 第三层输出传�?这里是全连接
 	outSize.c=cnn->S4->inputWidth;
 	outSize.r=cnn->S4->inputHeight;
 	inSize.c=cnn->C3->inputWidth;
@@ -357,8 +442,8 @@ void cnnff(CNN* cnn,float** inputData)
 			avgPooling(cnn->S4->y[i],outSize,cnn->C3->y[i],inSize,cnn->S4->mapSize);
 	}
 
-	// 输出层O5的处理
-	// 首先需要将前面的多维输出展开成一维向量
+	// 输出层O5的处�?
+	// 首先需要将前面的多维输出展开成一维向�?
 	float* O5inData=(float*)malloc((cnn->O5->inputNum)*sizeof(float)); 
 	for(i=0;i<(cnn->S4->outChannels);i++)
 		for(r=0;r<outSize.r;r++)
@@ -372,14 +457,14 @@ void cnnff(CNN* cnn,float** inputData)
 	free(O5inData);
 }
 
-// 激活函数 input是数据，inputNum说明数据数目，bas表明偏置
-float activation_Sigma(float input,float bas) // sigma激活函数
+// 激活函�?input是数据，inputNum说明数据数目，bas表明偏置
+float activation_Sigma(float input,float bas) // sigma激活函�?
 {
 	float temp=input+bas;
 	return (float)1.0/((float)(1.0+exp(-temp)));
 }
 
-void avgPooling(float** output,nSize outputSize,float** input,nSize inputSize,int mapSize) // 求平均值
+void avgPooling(float** output,nSize outputSize,float** input,nSize inputSize,int mapSize) // 求平均�?
 {
 	int outputW=inputSize.c/mapSize;
 	int outputH=inputSize.r/mapSize;
@@ -400,7 +485,7 @@ void avgPooling(float** output,nSize outputSize,float** input,nSize inputSize,in
 }
 
 // 单层全连接神经网络的前向传播
-float vecMulti(float* vec1,float* vec2,int vecL)// 两向量相乘
+float vecMulti(float* vec1,float* vec2,int vecL)// 两向量相�?
 {
 	int i;
 	float m=0;
@@ -419,13 +504,13 @@ void nnff(float* output,float* input,float** wdata,float* bas,nSize nnSize)
 		output[i]=vecMulti(input,wdata[i],w)+bas[i];
 }
 
-float sigma_derivation(float y){ // Logic激活函数的自变量微分
+float sigma_derivation(float y){ // Logic激活函数的自变量微�?
 	return y*(1-y); // 这里y是指经过激活函数的输出值，而不是自变量
 }
 
-void cnnbp(CNN* cnn,float* outputData) // 网络的后向传播
+void cnnbp(CNN* cnn,float* outputData) // 网络的后向传�?
 {
-	int i,j,c,r; // 将误差保存到网络中
+	int i,j,c,r; // 将误差保存到网络�?
 	for(i=0;i<cnn->O5->outputNum;i++)
 		cnn->e[i]=cnn->O5->y[i]-outputData[i];
 
@@ -435,7 +520,7 @@ void cnnbp(CNN* cnn,float* outputData) // 网络的后向传播
 		cnn->O5->d[i]=cnn->e[i]*sigma_derivation(cnn->O5->y[i]);
 
 	// S4层，传递到S4层的误差
-	// 这里没有激活函数
+	// 这里没有激活函�?
 	nSize outSize={cnn->S4->inputWidth/cnn->S4->mapSize,cnn->S4->inputHeight/cnn->S4->mapSize};
 	for(i=0;i<cnn->S4->outChannels;i++)
 		for(r=0;r<outSize.r;r++)
@@ -445,11 +530,11 @@ void cnnbp(CNN* cnn,float* outputData) // 网络的后向传播
 					cnn->S4->d[i][r][c]=cnn->S4->d[i][r][c]+cnn->O5->d[j]*cnn->O5->wData[j][wInt];
 				}
 
-	// C3层
-	// 由S4层传递的各反向误差,这里只是在S4的梯度上扩充一倍
+	// C3�?
+	// 由S4层传递的各反向误�?这里只是在S4的梯度上扩充一�?
 	int mapdata=cnn->S4->mapSize;
 	nSize S4dSize={cnn->S4->inputWidth/cnn->S4->mapSize,cnn->S4->inputHeight/cnn->S4->mapSize};
-	// 这里的Pooling是求平均，所以反向传递到下一神经元的误差梯度没有变化
+	// 这里?��Pooling是求平均，所以反向传递到下一神经元的�?差梯度没有变�?
 	for(i=0;i<cnn->C3->outChannels;i++){
 		float** C3e=UpSample(cnn->S4->d[i],S4dSize,cnn->S4->mapSize,cnn->S4->mapSize);
 		for(r=0;r<cnn->S4->inputHeight;r++)
@@ -460,8 +545,8 @@ void cnnbp(CNN* cnn,float* outputData) // 网络的后向传播
 		free(C3e);
 	}
 
-	// S2层，S2层没有激活函数，这里只有卷积层有激活函数部分
-	// 由卷积层传递给采样层的误差梯度，这里卷积层共有6*12个卷积模板
+	// S2层，S2层没有激活函数，这里只有卷积层有激活函数部�?
+	// 由卷积层传递给采样层的误差梯度，这里卷积层共有6*12个卷积模�?
 	outSize.c=cnn->C3->inputWidth;
 	outSize.r=cnn->C3->inputHeight;
 	nSize inSize={cnn->S4->inputWidth,cnn->S4->inputHeight};
@@ -477,11 +562,11 @@ void cnnbp(CNN* cnn,float* outputData) // 网络的后向传播
 		/*
 		for(r=0;r<cnn->C3->inputHeight;r++)
 			for(c=0;c<cnn->C3->inputWidth;c++)
-				// 这里本来用于采样的激活
+				// 这里本来用于采样的激�?
 		*/
 	}
 
-	// C1层，卷积层
+	// C1层，卷积�?
 	mapdata=cnn->S2->mapSize;
 	nSize S2dSize={cnn->S2->inputWidth/cnn->S2->mapSize,cnn->S2->inputHeight/cnn->S2->mapSize};
 	// 这里的Pooling是求平均，所以反向传递到下一神经元的误差梯度没有变化
@@ -498,7 +583,7 @@ void cnnbp(CNN* cnn,float* outputData) // 网络的后向传播
 
 void cnnapplygrads(CNN* cnn,CNNOpts opts,float** inputData) // 更新权重
 {
-	// 这里存在权重的主要是卷积层和输出层
+	// 这里存在权重的主要是卷积层和输出�?
 	// 更新这两个地方的权重就可以了
 	int i,j,r,c;
 
@@ -546,8 +631,8 @@ void cnnapplygrads(CNN* cnn,CNNOpts opts,float** inputData) // 更新权重
 		cnn->C3->basicData[i]=cnn->C3->basicData[i]-opts.alpha*summat(cnn->C3->d[i],dSize);
 	}
 
-	// 输出层
-	// 首先需要将前面的多维输出展开成一维向量
+	// 输出�?
+	// 首先需要将前面的多维输出展开成一维向�?
 	float* O5inData=(float*)malloc((cnn->O5->inputNum)*sizeof(float)); 
 	nSize outSize={cnn->S4->inputWidth/cnn->S4->mapSize,cnn->S4->inputHeight/cnn->S4->mapSize};
 	for(i=0;i<(cnn->S4->outChannels);i++)
@@ -565,7 +650,7 @@ void cnnapplygrads(CNN* cnn,CNNOpts opts,float** inputData) // 更新权重
 
 void cnnclear(CNN* cnn)
 {
-	// 将神经元的部分数据清除
+	// 将神?��元的部分数据清�?
 	int j,c,r;
 	// C1网络
 	for(j=0;j<cnn->C1->outChannels;j++){
@@ -613,7 +698,7 @@ void cnnclear(CNN* cnn)
 	}
 }
 
-// 这是用于测试的函数
+// 这是用于测试的函�?
 void savecnndata(CNN* cnn,const char* filename,float** inputdata) // 保存CNN网络中的相关数据
 {
 	FILE  *fp=NULL;
@@ -621,7 +706,7 @@ void savecnndata(CNN* cnn,const char* filename,float** inputdata) // 保存CNN�
 	if(fp==NULL)
 		printf("write file failed\n");
 
-	// C1的数据
+	// C1的数�?
 	int i,j,r;
 	// C1网络
 	for(i=0;i<cnn->C1->inputHeight;i++)
@@ -684,7 +769,7 @@ void savecnndata(CNN* cnn,const char* filename,float** inputdata) // 保存CNN�
 		}
 	}
 
-	// O5输出层
+	// O5输出�?
 	for(i=0;i<cnn->O5->outputNum;i++)
 		fwrite(cnn->O5->wData[i],sizeof(float),cnn->O5->inputNum,fp);
 	fwrite(cnn->O5->basicData,sizeof(float),cnn->O5->outputNum,fp);
